@@ -5,6 +5,8 @@ const path = require("path");
 const fs = require("fs");
 require("dotenv").config();
 
+const apiLogger = require("./middleware/apiLogger");
+
 /* ================================
    APP INIT
 ================================ */
@@ -23,8 +25,10 @@ const allowedOrigins = [
   "http://localhost:3000",
   "https://palegoldenrod-toad-265062.hostingersite.com",
   "https://sg-overseas.vercel.app",
-  "http://localhost:3001",
-   "https://food-helper-seller.vercel.app",
+  "http://localhost:3000",
+    "http://localhost:3001",
+  "https://food-helper-seller.vercel.app",
+  "*",
 ];
 
 app.use(
@@ -41,7 +45,7 @@ app.use(
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
-  })
+  }),
 );
 
 // Handle Preflight (VERY IMPORTANT)
@@ -56,6 +60,8 @@ if (!fs.existsSync(uploadDir)) {
   console.log("📁 uploads folder created");
 }
 app.use("/uploads", express.static(uploadDir));
+
+app.use(apiLogger);
 
 /* ================================
    ROUTES
@@ -84,13 +90,13 @@ app.use("/api/user", require("./routes/userProfileRoutes"));
 app.use("/api/wishlist", require("./routes/wishlistRoutes"));
 app.use("/api/vendor/products", require("./routes/vendorProduct.routes"));
 app.use("/api/admin", require("./routes/adminCategoryRoutes"));
-app.use(
-  "/api/vendor/orders",
-  require("./routes/vendorOrder.routes")
-);
+app.use("/api/vendor/orders", require("./routes/vendorOrder.routes"));
 app.use("/api/vendor/profile", require("./routes/vendorProfile.routes"));
 app.use("/api/vendor/inventory", require("./routes/vendorInventory.routes"));
-app.use("/api/vendor/bulk-discounts", require("./routes/vendorBulkDiscountRoutes"));
+app.use(
+  "/api/vendor/bulk-discounts",
+  require("./routes/vendorBulkDiscountRoutes"),
+);
 /* ================================
    HEALTH CHECK
 ================================ */
@@ -116,7 +122,7 @@ app.use((err, req, res, next) => {
 /* ================================
    CONNECT DATABASE & START SERVER
 ================================ */
-const PORT = process.env.PORT || 7000;
+const PORT = process.env.PORT || 7050;
 
 mongoose
   .connect(process.env.MONGODB_URI)

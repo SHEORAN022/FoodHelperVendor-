@@ -1,19 +1,15 @@
 // const VendorBulkDiscount = require("../models/VendorBulkDiscount");
 
-// /* ======================================================
-//    CREATE BULK DISCOUNT (VENDOR)
-// ====================================================== */
+
 // exports.createDiscount = async (req, res) => {
 //   try {
 //     const vendorId = req.vendor.id;
 //     let { product, minQty, maxQty = null, unitPrice } = req.body;
 
-//     /* ===== TYPE NORMALIZATION ===== */
-//     minQty = Number(minQty);
-//     maxQty = maxQty !== null ? Number(maxQty) : null;
+//     minQty    = Number(minQty);
+//     maxQty    = maxQty !== null && maxQty !== "" ? Number(maxQty) : null;
 //     unitPrice = Number(unitPrice);
 
-//     /* ===== VALIDATION ===== */
 //     if (!product || isNaN(minQty) || isNaN(unitPrice)) {
 //       return res.status(400).json({
 //         success: false,
@@ -44,7 +40,6 @@
 //       });
 //     }
 
-//     /* ===== DUPLICATE CHECK ===== */
 //     const exists = await VendorBulkDiscount.findOne({
 //       vendor: vendorId,
 //       product,
@@ -59,7 +54,6 @@
 //       });
 //     }
 
-//     /* ===== CREATE ===== */
 //     const discount = await VendorBulkDiscount.create({
 //       vendor: vendorId,
 //       product,
@@ -68,10 +62,15 @@
 //       unitPrice,
 //     });
 
+//     // Populate karke return karo
+//     const populated = await VendorBulkDiscount.findById(discount._id)
+//       .populate("product", "name image basePrice salePrice")
+//       .lean();
+
 //     return res.status(201).json({
 //       success: true,
 //       message: "Bulk discount created successfully",
-//       data: discount,
+//       data: populated,
 //     });
 //   } catch (err) {
 //     console.error("Create Vendor Discount Error:", err);
@@ -83,21 +82,24 @@
 // };
 
 // /* ======================================================
-//    GET ALL DISCOUNTS (LOGGED-IN VENDOR)
+//    GET MY DISCOUNTS — 🔥 NULL PRODUCT FILTER FIX
 // ====================================================== */
 // exports.getMyDiscounts = async (req, res) => {
 //   try {
 //     const vendorId = req.vendor.id;
 
 //     const discounts = await VendorBulkDiscount.find({ vendor: vendorId })
-//       .populate("product", "name basePrice salePrice")
-//       .sort({ minQty: 1 })
+//       .populate("product", "name image basePrice salePrice")
+//       .sort({ createdAt: -1 })
 //       .lean();
+
+//     // 🔥 KEY FIX: null product (deleted products) ko filter karo
+//     const valid = discounts.filter((d) => d.product !== null);
 
 //     return res.json({
 //       success: true,
-//       count: discounts.length,
-//       data: discounts,
+//       count: valid.length,
+//       data: valid,
 //     });
 //   } catch (err) {
 //     console.error("Get Vendor Discounts Error:", err);
@@ -109,16 +111,17 @@
 // };
 
 // /* ======================================================
-//    UPDATE DISCOUNT
+//    UPDATE
 // ====================================================== */
 // exports.updateDiscount = async (req, res) => {
 //   try {
 //     const vendorId = req.vendor.id;
 //     let { minQty, maxQty, unitPrice, isActive } = req.body;
 
-//     if (minQty !== undefined) minQty = Number(minQty);
-//     if (maxQty !== undefined && maxQty !== null) maxQty = Number(maxQty);
-//     if (unitPrice !== undefined) unitPrice = Number(unitPrice);
+//     if (minQty !== undefined)                        minQty    = Number(minQty);
+//     if (maxQty !== undefined && maxQty !== null && maxQty !== "") maxQty = Number(maxQty);
+//     else if (maxQty === "" || maxQty === null)       maxQty    = null;
+//     if (unitPrice !== undefined)                     unitPrice = Number(unitPrice);
 
 //     const discount = await VendorBulkDiscount.findOne({
 //       _id: req.params.id,
@@ -134,30 +137,21 @@
 
 //     if (minQty !== undefined) {
 //       if (!Number.isInteger(minQty) || minQty < 1) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Min Qty must be ≥ 1",
-//         });
+//         return res.status(400).json({ success: false, message: "Min Qty must be ≥ 1" });
 //       }
 //       discount.minQty = minQty;
 //     }
 
 //     if (maxQty !== undefined) {
 //       if (maxQty !== null && maxQty < (minQty ?? discount.minQty)) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Max Qty must be ≥ Min Qty",
-//         });
+//         return res.status(400).json({ success: false, message: "Max Qty must be ≥ Min Qty" });
 //       }
 //       discount.maxQty = maxQty;
 //     }
 
 //     if (unitPrice !== undefined) {
 //       if (unitPrice <= 0) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Unit Price must be greater than 0",
-//         });
+//         return res.status(400).json({ success: false, message: "Unit Price must be > 0" });
 //       }
 //       discount.unitPrice = unitPrice;
 //     }
@@ -168,10 +162,14 @@
 
 //     await discount.save();
 
+//     const populated = await VendorBulkDiscount.findById(discount._id)
+//       .populate("product", "name image basePrice salePrice")
+//       .lean();
+
 //     return res.json({
 //       success: true,
 //       message: "Bulk discount updated successfully",
-//       data: discount,
+//       data: populated,
 //     });
 //   } catch (err) {
 //     console.error("Update Vendor Discount Error:", err);
@@ -183,7 +181,7 @@
 // };
 
 // /* ======================================================
-//    DELETE DISCOUNT
+//    DELETE
 // ====================================================== */
 // exports.deleteDiscount = async (req, res) => {
 //   try {
@@ -213,6 +211,10 @@
 //     });
 //   }
 // };
+
+
+
+
 const VendorBulkDiscount = require("../models/VendorBulkDiscount");
 
 /* ======================================================
@@ -237,7 +239,7 @@ exports.createDiscount = async (req, res) => {
     if (!Number.isInteger(minQty) || minQty < 1) {
       return res.status(400).json({
         success: false,
-        message: "Min Qty must be an integer ≥ 1",
+        message: "Min Qty must be an integer >= 1",
       });
     }
 
@@ -245,7 +247,7 @@ exports.createDiscount = async (req, res) => {
       if (!Number.isInteger(maxQty) || maxQty < minQty) {
         return res.status(400).json({
           success: false,
-          message: "Max Qty must be ≥ Min Qty",
+          message: "Max Qty must be >= Min Qty",
         });
       }
     }
@@ -279,15 +281,20 @@ exports.createDiscount = async (req, res) => {
       unitPrice,
     });
 
-    // Populate karke return karo
     const populated = await VendorBulkDiscount.findById(discount._id)
       .populate("product", "name image basePrice salePrice")
       .lean();
 
+    // Attach productId as a top-level string for easy frontend filtering
+    const result = {
+      ...populated,
+      productId: String(populated.product?._id || ""),
+    };
+
     return res.status(201).json({
       success: true,
       message: "Bulk discount created successfully",
-      data: populated,
+      data: result,
     });
   } catch (err) {
     console.error("Create Vendor Discount Error:", err);
@@ -299,7 +306,7 @@ exports.createDiscount = async (req, res) => {
 };
 
 /* ======================================================
-   GET MY DISCOUNTS — 🔥 NULL PRODUCT FILTER FIX
+   GET MY DISCOUNTS (all for this vendor)
 ====================================================== */
 exports.getMyDiscounts = async (req, res) => {
   try {
@@ -310,8 +317,13 @@ exports.getMyDiscounts = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // 🔥 KEY FIX: null product (deleted products) ko filter karo
-    const valid = discounts.filter((d) => d.product !== null);
+    // Filter out deleted products, attach productId string
+    const valid = discounts
+      .filter((d) => d.product !== null)
+      .map((d) => ({
+        ...d,
+        productId: String(d.product?._id || ""),
+      }));
 
     return res.json({
       success: true,
@@ -328,6 +340,43 @@ exports.getMyDiscounts = async (req, res) => {
 };
 
 /* ======================================================
+   GET DISCOUNTS BY PRODUCT ID
+====================================================== */
+exports.getDiscountsByProduct = async (req, res) => {
+  try {
+    const vendorId  = req.vendor.id;
+    const productId = req.params.productId;
+
+    const discounts = await VendorBulkDiscount.find({
+      vendor:  vendorId,
+      product: productId,
+    })
+      .populate("product", "name image basePrice salePrice")
+      .sort({ minQty: 1 })
+      .lean();
+
+    const valid = discounts
+      .filter((d) => d.product !== null)
+      .map((d) => ({
+        ...d,
+        productId: String(d.product?._id || ""),
+      }));
+
+    return res.json({
+      success: true,
+      count: valid.length,
+      data: valid,
+    });
+  } catch (err) {
+    console.error("Get Discounts By Product Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch discounts for product",
+    });
+  }
+};
+
+/* ======================================================
    UPDATE
 ====================================================== */
 exports.updateDiscount = async (req, res) => {
@@ -335,13 +384,13 @@ exports.updateDiscount = async (req, res) => {
     const vendorId = req.vendor.id;
     let { minQty, maxQty, unitPrice, isActive } = req.body;
 
-    if (minQty !== undefined)                        minQty    = Number(minQty);
+    if (minQty !== undefined) minQty = Number(minQty);
     if (maxQty !== undefined && maxQty !== null && maxQty !== "") maxQty = Number(maxQty);
-    else if (maxQty === "" || maxQty === null)       maxQty    = null;
-    if (unitPrice !== undefined)                     unitPrice = Number(unitPrice);
+    else if (maxQty === "" || maxQty === null) maxQty = null;
+    if (unitPrice !== undefined) unitPrice = Number(unitPrice);
 
     const discount = await VendorBulkDiscount.findOne({
-      _id: req.params.id,
+      _id:    req.params.id,
       vendor: vendorId,
     });
 
@@ -354,14 +403,14 @@ exports.updateDiscount = async (req, res) => {
 
     if (minQty !== undefined) {
       if (!Number.isInteger(minQty) || minQty < 1) {
-        return res.status(400).json({ success: false, message: "Min Qty must be ≥ 1" });
+        return res.status(400).json({ success: false, message: "Min Qty must be >= 1" });
       }
       discount.minQty = minQty;
     }
 
     if (maxQty !== undefined) {
       if (maxQty !== null && maxQty < (minQty ?? discount.minQty)) {
-        return res.status(400).json({ success: false, message: "Max Qty must be ≥ Min Qty" });
+        return res.status(400).json({ success: false, message: "Max Qty must be >= Min Qty" });
       }
       discount.maxQty = maxQty;
     }
@@ -383,10 +432,15 @@ exports.updateDiscount = async (req, res) => {
       .populate("product", "name image basePrice salePrice")
       .lean();
 
+    const result = {
+      ...populated,
+      productId: String(populated.product?._id || ""),
+    };
+
     return res.json({
       success: true,
       message: "Bulk discount updated successfully",
-      data: populated,
+      data: result,
     });
   } catch (err) {
     console.error("Update Vendor Discount Error:", err);
@@ -405,7 +459,7 @@ exports.deleteDiscount = async (req, res) => {
     const vendorId = req.vendor.id;
 
     const discount = await VendorBulkDiscount.findOneAndDelete({
-      _id: req.params.id,
+      _id:    req.params.id,
       vendor: vendorId,
     });
 
