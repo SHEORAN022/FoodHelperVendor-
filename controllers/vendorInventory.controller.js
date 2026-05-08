@@ -1,74 +1,94 @@
 // const VendorInventory = require("../models/VendorInventory");
-// const VendorProduct = require("../models/vendorProduct");
+// const VendorProduct   = require("../models/vendorProduct");
 
-// /* ======================================================
-//    CREATE / UPDATE INVENTORY
-// ====================================================== */
-// exports.upsertInventory = async (req, res) => {
+// const toNum = (v, fb = 0) => { const n = Number(v); return isNaN(n) ? fb : n; };
+
+// /* ─── Shared sort: expiring soon + low stock come first ─── */
+// const smartSort = (a, b) => {
+//   const scoreItem = (x) => {
+//     let score = 0;
+//     // Out of stock = highest priority
+//     if (x.outOfStock) score += 1000;
+//     // Low stock
+//     else if (x.availableStock <= x.minStock) score += 500;
+//     // Expiring within 7 days (or already expired)
+//     if (x.expiryDate) {
+//       const days = Math.ceil((new Date(x.expiryDate) - Date.now()) / 86400000);
+//       if (days <= 0)  score += 800;   // expired
+//       else if (days <= 7)  score += 400;
+//       else if (days <= 30) score += 200;
+//     }
+//     return score;
+//   };
+//   const diff = scoreItem(b) - scoreItem(a);
+//   if (diff !== 0) return diff;
+//   // tie-break: nearest expiry first
+//   if (a.expiryDate && b.expiryDate) return new Date(a.expiryDate) - new Date(b.expiryDate);
+//   if (a.expiryDate) return -1;
+//   if (b.expiryDate) return 1;
+//   return new Date(b.updatedAt) - new Date(a.updatedAt);
+// };
+
+// /* ══════════════════════════════════════════
+//    1. GET ALL INVENTORY  →  GET /
+//    Query: ?search=&status=OK|LOW|OUT_OF_STOCK|EXPIRING
+// ══════════════════════════════════════════ */
+// exports.getInventory = async (req, res) => {
 //   try {
-//     const { productId, totalStock, minStock } = req.body;
+//     const { search, status } = req.query;
 
-//     if (!productId || totalStock === undefined) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Product and stock required",
+//     let inventory = await VendorInventory.find({ vendor: req.vendor.id })
+//       .populate("product", "name image basePrice salePrice")
+//       .lean();
+
+//     // filter null products
+//     inventory = inventory.filter((x) => x.product && x.product._id);
+
+//     // text search
+//     if (search) {
+//       const q = search.toLowerCase();
+//       inventory = inventory.filter((i) =>
+//         i.product?.name?.toLowerCase().includes(q)
+//       );
+//     }
+
+//     // status filter
+//     if (status) {
+//       const now = Date.now();
+//       inventory = inventory.filter((i) => {
+//         const days = i.expiryDate
+//           ? Math.ceil((new Date(i.expiryDate) - now) / 86400000)
+//           : null;
+
+//         if (status === "OUT_OF_STOCK") return i.outOfStock;
+//         if (status === "LOW")          return !i.outOfStock && i.availableStock <= i.minStock;
+//         if (status === "OK")           return !i.outOfStock && i.availableStock > i.minStock;
+//         if (status === "EXPIRING")     return days !== null && days <= 30 && !i.outOfStock;
+//         return true;
 //       });
 //     }
 
-//     const product = await VendorProduct.findOne({
-//       _id: productId,
-//       vendor: req.vendor.id,
-//     });
+//     // ✅ Smart sort: critical items on top
+//     inventory.sort(smartSort);
 
-//     if (!product) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Product not found",
-//       });
-//     }
-
-//     let inventory = await VendorInventory.findOne({
-//       vendor: req.vendor.id,
-//       product: productId,
-//     });
-
-//     if (inventory) {
-//       inventory.totalStock = totalStock;
-//       inventory.availableStock = totalStock;
-//       if (minStock !== undefined) inventory.minStock = minStock;
-//     } else {
-//       inventory = await VendorInventory.create({
-//         vendor: req.vendor.id,
-//         product: productId,
-//         totalStock,
-//         availableStock: totalStock,
-//         minStock: minStock || 5,
-//       });
-//     }
-
-//     inventory.outOfStock = inventory.availableStock <= 0;
-//     await inventory.save();
-
-//     res.json({
-//       success: true,
-//       message: "Inventory updated",
-//       data: inventory,
-//     });
+//     res.json({ success: true, count: inventory.length, data: inventory });
 //   } catch (err) {
 //     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
 
-// /* ======================================================
-//    GET INVENTORY LIST
-// ====================================================== */
-// exports.getInventory = async (req, res) => {
+// /* ══════════════════════════════════════════
+//    2. GET SINGLE INVENTORY  →  GET /:id
+// ══════════════════════════════════════════ */
+// exports.getInventoryById = async (req, res) => {
 //   try {
-//     const inventory = await VendorInventory.find({
+//     const inventory = await VendorInventory.findOne({
+//       _id: req.params.id,
 //       vendor: req.vendor.id,
-//     })
-//       .populate("product", "name image basePrice salePrice")
-//       .sort({ updatedAt: -1 });
+//     }).populate("product", "name image basePrice salePrice");
+
+//     if (!inventory)
+//       return res.status(404).json({ success: false, message: "Inventory not found" });
 
 //     res.json({ success: true, data: inventory });
 //   } catch (err) {
@@ -76,27 +96,319 @@
 //   }
 // };
 
+// /* ══════════════════════════════════════════
+//    3. CREATE INVENTORY  →  POST /
+//    Body: { productId, totalStock, minStock, expiryDate }
+// ══════════════════════════════════════════ */
+// exports.createInventory = async (req, res) => {
+//   try {
+//     const { productId, totalStock, minStock, expiryDate } = req.body;
+
+//     if (!productId || totalStock === undefined)
+//       return res.status(400).json({ success: false, message: "Product and totalStock are required" });
+
+//     // verify product belongs to this vendor
+//     const product = await VendorProduct.findOne({ _id: productId, vendor: req.vendor.id });
+//     if (!product)
+//       return res.status(404).json({ success: false, message: "Product not found" });
+
+//     // prevent duplicate
+//     const existing = await VendorInventory.findOne({ vendor: req.vendor.id, product: productId });
+//     if (existing)
+//       return res.status(409).json({
+//         success: false,
+//         message: "Inventory already exists for this product. Use update instead.",
+//       });
+
+//     const stockNum = toNum(totalStock);
+//     const inventory = await VendorInventory.create({
+//       vendor:         req.vendor.id,
+//       product:        productId,
+//       totalStock:     stockNum,
+//       availableStock: stockNum,
+//       minStock:       minStock !== undefined ? toNum(minStock) : 5,
+//       outOfStock:     stockNum <= 0,
+//       expiryDate:     expiryDate || null,
+//     });
+
+//     const populated = await inventory.populate("product", "name image basePrice salePrice");
+//     res.status(201).json({ success: true, message: "Inventory created", data: populated });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+// /* ══════════════════════════════════════════
+//    4. UPDATE INVENTORY  →  PUT /:id
+//    Body: { totalStock, minStock, expiryDate }
+// ══════════════════════════════════════════ */
+// exports.updateInventory = async (req, res) => {
+//   try {
+//     const { totalStock, minStock, expiryDate } = req.body;
+
+//     if (totalStock === undefined)
+//       return res.status(400).json({ success: false, message: "totalStock is required" });
+
+//     const inventory = await VendorInventory.findOne({
+//       _id: req.params.id,
+//       vendor: req.vendor.id,
+//     });
+
+//     if (!inventory)
+//       return res.status(404).json({ success: false, message: "Inventory not found" });
+
+//     inventory.totalStock     = toNum(totalStock);
+//     inventory.availableStock = toNum(totalStock);
+//     if (minStock   !== undefined) inventory.minStock   = toNum(minStock);
+//     if (expiryDate !== undefined) inventory.expiryDate = expiryDate || null;
+//     inventory.outOfStock = inventory.availableStock <= 0;
+
+//     await inventory.save();
+//     const populated = await inventory.populate("product", "name image basePrice salePrice");
+//     res.json({ success: true, message: "Inventory updated", data: populated });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+// /* ══════════════════════════════════════════
+//    5. DELETE INVENTORY  →  DELETE /:id
+// ══════════════════════════════════════════ */
+// exports.deleteInventory = async (req, res) => {
+//   try {
+//     const inventory = await VendorInventory.findOneAndDelete({
+//       _id: req.params.id,
+//       vendor: req.vendor.id,
+//     });
+
+//     if (!inventory)
+//       return res.status(404).json({ success: false, message: "Inventory not found" });
+
+//     res.json({ success: true, message: "Inventory deleted successfully" });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+// /* ══════════════════════════════════════════
+//    6. RESTOCK  →  PATCH /:id/restock
+//    Body: { quantity }
+// ══════════════════════════════════════════ */
+// exports.restockInventory = async (req, res) => {
+//   try {
+//     const { quantity } = req.body;
+
+//     if (!quantity || toNum(quantity) <= 0)
+//       return res.status(400).json({ success: false, message: "Quantity must be a positive number" });
+
+//     const inventory = await VendorInventory.findOne({
+//       _id: req.params.id,
+//       vendor: req.vendor.id,
+//     });
+
+//     if (!inventory)
+//       return res.status(404).json({ success: false, message: "Inventory not found" });
+
+//     const qty = toNum(quantity);
+//     inventory.totalStock     += qty;
+//     inventory.availableStock += qty;
+//     inventory.outOfStock      = inventory.availableStock <= 0;
+
+//     await inventory.save();
+//     const populated = await inventory.populate("product", "name image basePrice salePrice");
+//     res.json({ success: true, message: `${qty} units added to stock`, data: populated });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+// /* ══════════════════════════════════════════
+//    7. BATCH UPSERT  →  POST /batch
+//    Body: { items: [{ productId, totalStock, minStock, expiryDate }] }
+//    - productId already in inventory → UPDATE
+//    - productId not in inventory     → CREATE
+// ══════════════════════════════════════════ */
+// exports.batchUpsertInventory = async (req, res) => {
+//   try {
+//     const items = req.body.items;
+
+//     if (!Array.isArray(items) || items.length === 0)
+//       return res.status(400).json({ success: false, message: "items[] required" });
+
+//     const results  = { created: [], updated: [], failed: [] };
+
+//     for (const item of items) {
+//       const { productId, totalStock, minStock, expiryDate } = item;
+
+//       if (!productId || totalStock === undefined) {
+//         results.failed.push({ productId, reason: "productId and totalStock required" });
+//         continue;
+//       }
+
+//       try {
+//         // verify product belongs to vendor
+//         const product = await VendorProduct.findOne({ _id: productId, vendor: req.vendor.id });
+//         if (!product) {
+//           results.failed.push({ productId, reason: "Product not found" });
+//           continue;
+//         }
+
+//         const stockNum = toNum(totalStock);
+//         const existing = await VendorInventory.findOne({ vendor: req.vendor.id, product: productId });
+
+//         if (existing) {
+//           // UPDATE
+//           existing.totalStock     = stockNum;
+//           existing.availableStock = stockNum;
+//           if (minStock   !== undefined) existing.minStock   = toNum(minStock);
+//           if (expiryDate !== undefined) existing.expiryDate = expiryDate || null;
+//           existing.outOfStock = stockNum <= 0;
+//           await existing.save();
+//           const pop = await existing.populate("product", "name image");
+//           results.updated.push(pop);
+//         } else {
+//           // CREATE
+//           const inv = await VendorInventory.create({
+//             vendor:         req.vendor.id,
+//             product:        productId,
+//             totalStock:     stockNum,
+//             availableStock: stockNum,
+//             minStock:       minStock !== undefined ? toNum(minStock) : 5,
+//             outOfStock:     stockNum <= 0,
+//             expiryDate:     expiryDate || null,
+//           });
+//           const pop = await inv.populate("product", "name image");
+//           results.created.push(pop);
+//         }
+//       } catch (innerErr) {
+//         results.failed.push({ productId, reason: innerErr.message });
+//       }
+//     }
+
+//     res.json({
+//       success: true,
+//       message: `${results.created.length} created, ${results.updated.length} updated, ${results.failed.length} failed`,
+//       data: results,
+//     });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+// /* ══════════════════════════════════════════
+//    8. EXPIRING SOON  →  GET /expiring
+//    Query: ?days=30  (default 30)
+// ══════════════════════════════════════════ */
+// exports.getExpiring = async (req, res) => {
+//   try {
+//     const days = toNum(req.query.days, 30);
+//     const soon = new Date(Date.now() + days * 86400000);
+//     const now  = new Date();
+
+//     const inventory = await VendorInventory.find({
+//       vendor:     req.vendor.id,
+//       expiryDate: { $lte: soon, $gte: now },
+//       outOfStock: false,
+//     })
+//       .populate("product", "name image basePrice salePrice")
+//       .sort({ expiryDate: 1 });
+
+//     res.json({ success: true, count: inventory.length, days, data: inventory });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+
+// /* ══════════════════════════════════════════
+//    9. LOW STOCK  →  GET /low
+// ══════════════════════════════════════════ */
+// exports.getLowStock = async (req, res) => {
+//   try {
+//     const inventory = await VendorInventory.find({
+//       vendor: req.vendor.id,
+//       $expr:  { $lte: ["$availableStock", "$minStock"] },
+//     })
+//       .populate("product", "name image basePrice salePrice")
+//       .sort({ availableStock: 1 });
+
+//     res.json({ success: true, count: inventory.length, data: inventory });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
 
 const VendorInventory = require("../models/VendorInventory");
-const VendorProduct = require("../models/vendorProduct");
+const VendorProduct   = require("../models/vendorProduct");
+
+const toNum = (v, fb = 0) => { const n = Number(v); return isNaN(n) ? fb : n; };
+
+/* ─── Shared smart sort: critical items first ─── */
+const smartSort = (a, b) => {
+  const score = (x) => {
+    let s = 0;
+    if (x.outOfStock)                            s += 1000;
+    else if (x.availableStock <= x.minStock)     s += 500;
+    if (x.expiryDate) {
+      const d = Math.ceil((new Date(x.expiryDate) - Date.now()) / 86400000);
+      if (d <= 0)       s += 800;
+      else if (d <= 7)  s += 400;
+      else if (d <= 30) s += 200;
+    }
+    return s;
+  };
+  const diff = score(b) - score(a);
+  if (diff !== 0) return diff;
+  if (a.expiryDate && b.expiryDate)
+    return new Date(a.expiryDate) - new Date(b.expiryDate);
+  if (a.expiryDate) return -1;
+  if (b.expiryDate) return  1;
+  return new Date(b.updatedAt) - new Date(a.updatedAt);
+};
 
 /* ══════════════════════════════════════════
    1. GET ALL INVENTORY  →  GET /
+   Query: ?search=&status=OK|LOW|OUT_OF_STOCK|EXPIRING
 ══════════════════════════════════════════ */
 exports.getInventory = async (req, res) => {
   try {
-    const inventory = await VendorInventory.find({ vendor: req.vendor.id })
-      .populate("product", "name image basePrice salePrice")
-      .sort({ updatedAt: -1 });
+    const { search, status } = req.query;
 
-    res.json({ success: true, data: inventory });
+    let inventory = await VendorInventory.find({ vendor: req.vendor.id })
+      .populate("product", "name image basePrice salePrice")
+      .lean();
+
+    inventory = inventory.filter((x) => x.product && x.product._id);
+
+    if (search) {
+      const q = search.toLowerCase();
+      inventory = inventory.filter((i) =>
+        i.product?.name?.toLowerCase().includes(q)
+      );
+    }
+
+    if (status) {
+      const now = Date.now();
+      inventory = inventory.filter((i) => {
+        const days = i.expiryDate
+          ? Math.ceil((new Date(i.expiryDate) - now) / 86400000)
+          : null;
+        if (status === "OUT_OF_STOCK") return i.outOfStock;
+        if (status === "LOW")          return !i.outOfStock && i.availableStock <= i.minStock;
+        if (status === "OK")           return !i.outOfStock && i.availableStock > i.minStock;
+        if (status === "EXPIRING")     return days !== null && days <= 30 && !i.outOfStock;
+        return true;
+      });
+    }
+
+    inventory.sort(smartSort);
+    res.json({ success: true, count: inventory.length, data: inventory });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
 /* ══════════════════════════════════════════
-   2. GET SINGLE INVENTORY  →  GET /:id
+   2. GET SINGLE  →  GET /:id
 ══════════════════════════════════════════ */
 exports.getInventoryById = async (req, res) => {
   try {
@@ -105,9 +417,8 @@ exports.getInventoryById = async (req, res) => {
       vendor: req.vendor.id,
     }).populate("product", "name image basePrice salePrice");
 
-    if (!inventory) {
+    if (!inventory)
       return res.status(404).json({ success: false, message: "Inventory not found" });
-    }
 
     res.json({ success: true, data: inventory });
   } catch (err) {
@@ -116,42 +427,64 @@ exports.getInventoryById = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════
-   3. CREATE INVENTORY  →  POST /
+   3. CREATE  →  POST /
+   Body: { productId, totalStock, minStock, expiryDate, batches[] }
+   batches: [{ batchNo, mfgDate, expiryDate, qty }]
 ══════════════════════════════════════════ */
 exports.createInventory = async (req, res) => {
   try {
-    const { productId, totalStock, minStock } = req.body;
+    const { productId, totalStock, minStock, expiryDate, batches } = req.body;
 
-    if (!productId || totalStock === undefined) {
-      return res.status(400).json({ success: false, message: "Product and totalStock are required" });
-    }
+    if (!productId)
+      return res.status(400).json({ success: false, message: "productId required" });
 
     // Verify product belongs to this vendor
     const product = await VendorProduct.findOne({ _id: productId, vendor: req.vendor.id });
-    if (!product) {
+    if (!product)
       return res.status(404).json({ success: false, message: "Product not found" });
-    }
 
-    // Prevent duplicate inventory for same product
-    const existing = await VendorInventory.findOne({ vendor: req.vendor.id, product: productId });
-    if (existing) {
+    // Prevent duplicate
+    const existing = await VendorInventory.findOne({
+      vendor: req.vendor.id, product: productId,
+    });
+    if (existing)
       return res.status(409).json({
         success: false,
         message: "Inventory already exists for this product. Use update instead.",
       });
+
+    // ── Batch or legacy mode ───────────────────────────────────────────────
+    let processedBatches = [];
+    let stockNum;
+
+    if (Array.isArray(batches) && batches.length > 0) {
+      processedBatches = batches
+        .filter((b) => b.qty && Number(b.qty) > 0)
+        .map((b) => ({
+          batchNo:    (b.batchNo || "").trim(),
+          mfgDate:    b.mfgDate    || null,
+          expiryDate: b.expiryDate || null,
+          qty:        toNum(b.qty),
+        }));
+      stockNum = processedBatches.reduce((s, b) => s + b.qty, 0);
+    } else {
+      if (totalStock === undefined)
+        return res.status(400).json({ success: false, message: "totalStock or batches required" });
+      stockNum = toNum(totalStock);
     }
 
     const inventory = await VendorInventory.create({
-      vendor: req.vendor.id,
-      product: productId,
-      totalStock: Number(totalStock),
-      availableStock: Number(totalStock),
-      minStock: minStock !== undefined ? Number(minStock) : 5,
-      outOfStock: Number(totalStock) <= 0,
+      vendor:         req.vendor.id,
+      product:        productId,
+      totalStock:     stockNum,
+      availableStock: stockNum,
+      minStock:       minStock !== undefined ? toNum(minStock) : 5,
+      outOfStock:     stockNum <= 0,
+      expiryDate:     (!batches || batches.length === 0) ? (expiryDate || null) : undefined,
+      batches:        processedBatches,
     });
 
     const populated = await inventory.populate("product", "name image basePrice salePrice");
-
     res.status(201).json({ success: true, message: "Inventory created", data: populated });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -159,35 +492,47 @@ exports.createInventory = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════
-   4. UPDATE INVENTORY  →  PUT /:id
-   (Updates totalStock, availableStock, minStock)
+   4. UPDATE  →  PUT /:id
+   Body: { totalStock, minStock, expiryDate, batches[] }
+   Agar batches bhejo → batch mode (replaces all batches)
+   Agar sirf totalStock bhejo → legacy mode
 ══════════════════════════════════════════ */
 exports.updateInventory = async (req, res) => {
   try {
-    const { totalStock, minStock } = req.body;
-
-    if (totalStock === undefined) {
-      return res.status(400).json({ success: false, message: "totalStock is required" });
-    }
+    const { totalStock, minStock, expiryDate, batches } = req.body;
 
     const inventory = await VendorInventory.findOne({
       _id: req.params.id,
       vendor: req.vendor.id,
     });
-
-    if (!inventory) {
+    if (!inventory)
       return res.status(404).json({ success: false, message: "Inventory not found" });
+
+    if (Array.isArray(batches) && batches.length > 0) {
+      // ── Batch mode ─────────────────────────────────────────────────────
+      inventory.batches = batches
+        .filter((b) => b.qty && Number(b.qty) > 0)
+        .map((b) => ({
+          batchNo:    (b.batchNo || "").trim(),
+          mfgDate:    b.mfgDate    || null,
+          expiryDate: b.expiryDate || null,
+          qty:        toNum(b.qty),
+        }));
+      // pre-save hook will recalculate totalStock, availableStock, expiryDate
+    } else {
+      // ── Legacy mode ────────────────────────────────────────────────────
+      if (totalStock === undefined)
+        return res.status(400).json({ success: false, message: "totalStock or batches required" });
+      inventory.totalStock     = toNum(totalStock);
+      inventory.availableStock = toNum(totalStock);
+      inventory.batches        = [];
+      if (expiryDate !== undefined) inventory.expiryDate = expiryDate || null;
     }
 
-    inventory.totalStock = Number(totalStock);
-    inventory.availableStock = Number(totalStock);
-    if (minStock !== undefined) inventory.minStock = Number(minStock);
-    inventory.outOfStock = inventory.availableStock <= 0;
-
+    if (minStock !== undefined) inventory.minStock = toNum(minStock);
     await inventory.save();
 
     const populated = await inventory.populate("product", "name image basePrice salePrice");
-
     res.json({ success: true, message: "Inventory updated", data: populated });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -195,7 +540,7 @@ exports.updateInventory = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════
-   5. DELETE INVENTORY  →  DELETE /:id
+   5. DELETE  →  DELETE /:id
 ══════════════════════════════════════════ */
 exports.deleteInventory = async (req, res) => {
   try {
@@ -203,10 +548,8 @@ exports.deleteInventory = async (req, res) => {
       _id: req.params.id,
       vendor: req.vendor.id,
     });
-
-    if (!inventory) {
+    if (!inventory)
       return res.status(404).json({ success: false, message: "Inventory not found" });
-    }
 
     res.json({ success: true, message: "Inventory deleted successfully" });
   } catch (err) {
@@ -215,34 +558,177 @@ exports.deleteInventory = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════
-   6. RESTOCK (Add to existing stock)  →  PATCH /:id/restock
+   6. RESTOCK  →  PATCH /:id/restock
+   Body: { quantity, batchNo, mfgDate, expiryDate }
+   Adds a new batch OR increments simple stock
 ══════════════════════════════════════════ */
 exports.restockInventory = async (req, res) => {
   try {
-    const { quantity } = req.body;
+    const { quantity, batchNo, mfgDate, expiryDate } = req.body;
 
-    if (!quantity || Number(quantity) <= 0) {
+    if (!quantity || toNum(quantity) <= 0)
       return res.status(400).json({ success: false, message: "Quantity must be a positive number" });
-    }
 
     const inventory = await VendorInventory.findOne({
       _id: req.params.id,
       vendor: req.vendor.id,
     });
-
-    if (!inventory) {
+    if (!inventory)
       return res.status(404).json({ success: false, message: "Inventory not found" });
+
+    const qty = toNum(quantity);
+
+    if (inventory.batches && inventory.batches.length > 0) {
+      // Batch mode: add a new batch
+      inventory.batches.push({
+        batchNo:    (batchNo || "").trim(),
+        mfgDate:    mfgDate    || null,
+        expiryDate: expiryDate || null,
+        qty,
+      });
+      // pre-save recalculates totalStock, availableStock, expiryDate
+    } else {
+      // Legacy mode: simple add
+      inventory.totalStock     += qty;
+      inventory.availableStock += qty;
+      if (expiryDate !== undefined) inventory.expiryDate = expiryDate || null;
     }
 
-    inventory.totalStock += Number(quantity);
-    inventory.availableStock += Number(quantity);
-    inventory.outOfStock = inventory.availableStock <= 0;
-
     await inventory.save();
-
     const populated = await inventory.populate("product", "name image basePrice salePrice");
+    res.json({ success: true, message: `${qty} units added to stock`, data: populated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
 
-    res.json({ success: true, message: `${quantity} units added to stock`, data: populated });
+/* ══════════════════════════════════════════
+   7. BATCH UPSERT  →  POST /batch
+   Body: { items: [{ productId, totalStock, minStock, expiryDate, note, batches[] }] }
+══════════════════════════════════════════ */
+exports.batchUpsertInventory = async (req, res) => {
+  try {
+    const items = req.body.items;
+    if (!Array.isArray(items) || items.length === 0)
+      return res.status(400).json({ success: false, message: "items[] required" });
+
+    const results = { created: [], updated: [], failed: [] };
+
+    for (const item of items) {
+      const { productId, totalStock, minStock, expiryDate, note, batches } = item;
+
+      if (!productId) {
+        results.failed.push({ productId, reason: "productId required" });
+        continue;
+      }
+
+      try {
+        const product = await VendorProduct.findOne({ _id: productId, vendor: req.vendor.id });
+        if (!product) {
+          results.failed.push({ productId, reason: "Product not found" });
+          continue;
+        }
+
+        // ── Batch or legacy mode ──────────────────────────────────────────
+        let processedBatches = [];
+        let stockNum;
+
+        if (Array.isArray(batches) && batches.length > 0) {
+          processedBatches = batches
+            .filter((b) => b.qty && Number(b.qty) > 0)
+            .map((b) => ({
+              batchNo:    (b.batchNo || "").trim(),
+              mfgDate:    b.mfgDate    || null,
+              expiryDate: b.expiryDate || null,
+              qty:        toNum(b.qty),
+            }));
+          stockNum = processedBatches.reduce((s, b) => s + b.qty, 0);
+        } else {
+          stockNum = toNum(totalStock);
+        }
+
+        const existing = await VendorInventory.findOne({
+          vendor: req.vendor.id, product: productId,
+        });
+
+        if (existing) {
+          if (processedBatches.length > 0) {
+            existing.batches = processedBatches;
+          } else {
+            existing.totalStock     = stockNum;
+            existing.availableStock = stockNum;
+            existing.batches        = [];
+            if (expiryDate !== undefined) existing.expiryDate = expiryDate || null;
+          }
+          if (minStock !== undefined) existing.minStock = toNum(minStock);
+          await existing.save();
+          const pop = await existing.populate("product", "name image");
+          results.updated.push(pop);
+        } else {
+          const inv = await VendorInventory.create({
+            vendor:         req.vendor.id,
+            product:        productId,
+            totalStock:     stockNum,
+            availableStock: stockNum,
+            minStock:       minStock !== undefined ? toNum(minStock) : 5,
+            outOfStock:     stockNum <= 0,
+            expiryDate:     processedBatches.length === 0 ? (expiryDate || null) : undefined,
+            batches:        processedBatches,
+          });
+          const pop = await inv.populate("product", "name image");
+          results.created.push(pop);
+        }
+      } catch (innerErr) {
+        results.failed.push({ productId, reason: innerErr.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${results.created.length} created, ${results.updated.length} updated, ${results.failed.length} failed`,
+      data: results,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/* ══════════════════════════════════════════
+   8. EXPIRING SOON  →  GET /expiring?days=30
+══════════════════════════════════════════ */
+exports.getExpiring = async (req, res) => {
+  try {
+    const days = toNum(req.query.days, 30);
+    const soon = new Date(Date.now() + days * 86400000);
+    const now  = new Date();
+
+    const inventory = await VendorInventory.find({
+      vendor:     req.vendor.id,
+      expiryDate: { $lte: soon, $gte: now },
+      outOfStock: false,
+    })
+      .populate("product", "name image basePrice salePrice")
+      .sort({ expiryDate: 1 });
+
+    res.json({ success: true, count: inventory.length, days, data: inventory });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/* ══════════════════════════════════════════
+   9. LOW STOCK  →  GET /low
+══════════════════════════════════════════ */
+exports.getLowStock = async (req, res) => {
+  try {
+    const inventory = await VendorInventory.find({
+      vendor: req.vendor.id,
+      $expr:  { $lte: ["$availableStock", "$minStock"] },
+    })
+      .populate("product", "name image basePrice salePrice")
+      .sort({ availableStock: 1 });
+
+    res.json({ success: true, count: inventory.length, data: inventory });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

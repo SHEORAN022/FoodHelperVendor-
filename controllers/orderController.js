@@ -1,419 +1,277 @@
-// // const Order = require("../models/Order");
-// // const Price = require("../models/priceModel");
-// // const User = require("../models/User");
-
-// // // ================= CREATE ORDER =================
-// // exports.createOrder = async (req, res) => {
-// //   try {
-// //     const userId = req.user.id;
-// //     const { productId, quantity, address } = req.body;
-
-// //     const user = await User.findById(userId);
-// //     if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
-// //     const product = await Price.findById(productId);
-// //     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
-
-// //     const order = await Order.create({
-// //       user: user._id,
-// //       userName: user.name || user.email,
-// //       product: product._id,
-// //       productName: product.name,
-// //       price: product.salePrice,
-// //       quantity: quantity || 1,
-// //       address,
-// //     });
-
-// //     res.json({ success: true, data: order });
-// //   } catch (err) {
-// //     res.status(500).json({ success: false, message: err.message });
-// //   }
-// // };
-
-// // // ================= USER ORDERS =================
-// // exports.getMyOrders = async (req, res) => {
-// //   try {
-// //     const orders = await Order.find({ user: req.user.id })
-// //       .populate("product", "name image salePrice")
-// //       .sort({ createdAt: -1 });
-
-// //     res.json({ success: true, data: orders });
-// //   } catch (err) {
-// //     res.status(500).json({ success: false, message: err.message });
-// //   }
-// // };
-
-// // // ================= ADMIN ALL ORDERS =================
-// // exports.getAllOrders = async (req, res) => {
-// //   try {
-// //     const orders = await Order.find()
-// //       .populate("user", "name email")
-// //       .populate("product", "name salePrice image")
-// //       .sort({ createdAt: -1 });
-
-// //     res.json({ success: true, data: orders });
-// //   } catch (err) {
-// //     res.status(500).json({ success: false, message: err.message });
-// //   }
-// // };
-
-// // // ================= UPDATE STATUS =================
-// // exports.updateOrderStatus = async (req, res) => {
-// //   try {
-// //     const order = await Order.findByIdAndUpdate(
-// //       req.params.id,
-// //       { status: req.body.status },
-// //       { new: true }
-// //     );
-
-// //     res.json({ success: true, data: order });
-// //   } catch (err) {
-// //     res.status(500).json({ success: false, message: err.message });
-// //   }
-// // };
-
-
-// const Order = require("../models/Order");
-// const Price = require("../models/priceModel");
-// const User = require("../models/User");
-
-// /* ======================================================
-//    CREATE ORDER
-// ====================================================== */
-// exports.createOrder = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     const { productId, quantity = 1, address } = req.body;
-
-//     /* 🔎 USER CHECK */
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "User not found",
-//       });
-//     }
-
-//     /* 🔎 PRODUCT CHECK */
-//     const product = await Price.findById(productId);
-//     if (!product || product.status !== "active") {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Product not available",
-//       });
-//     }
-
-//     /* 🔢 QUANTITY VALIDATION */
-//     if (!Number.isInteger(quantity) || quantity < 1) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Quantity must be a number greater than 0",
-//       });
-//     }
-
-//     /* 💰 PRICE CALCULATION */
-//     const unitPrice = product.salePrice;     // product ka current sale price
-//     const totalPrice = unitPrice * quantity; // FINAL TOTAL
-
-//     /* 📦 CREATE ORDER */
-//     const order = await Order.create({
-//       user: user._id,
-//       userName: user.name || user.email,
-//       product: product._id,
-//       productName: product.name,
-//       price: totalPrice,     // 🔐 TOTAL PRICE LOCKED
-//       quantity,
-//       address,
-//     });
-
-//     return res.status(201).json({
-//       success: true,
-//       message: "Order placed successfully",
-//       data: {
-//         orderId: order._id,
-//         productName: order.productName,
-//         unitPrice,
-//         quantity,
-//         totalPrice,
-//         status: order.status,
-//         createdAt: order.createdAt,
-//       },
-//     });
-
-//   } catch (err) {
-//     console.error("Create Order Error:", err);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to place order",
-//     });
-//   }
-// };
-
-// /* ======================================================
-//    USER - MY ORDERS
-// ====================================================== */
-// exports.getMyOrders = async (req, res) => {
-//   try {
-//     const orders = await Order.find({ user: req.user.id })
-//       .populate("product", "name image")
-//       .sort({ createdAt: -1 });
-
-//     return res.json({
-//       success: true,
-//       count: orders.length,
-//       data: orders,
-//     });
-//   } catch (err) {
-//     console.error("Get My Orders Error:", err);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to fetch orders",
-//     });
-//   }
-// };
-
-// /* ======================================================
-//    ADMIN - ALL ORDERS
-// ====================================================== */
-// exports.getAllOrders = async (req, res) => {
-//   try {
-//     const orders = await Order.find()
-//       .populate("user", "name email")
-//       .populate("product", "name image")
-//       .sort({ createdAt: -1 });
-
-//     return res.json({
-//       success: true,
-//       count: orders.length,
-//       data: orders,
-//     });
-//   } catch (err) {
-//     console.error("Get All Orders Error:", err);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to fetch orders",
-//     });
-//   }
-// };
-
-// /* ======================================================
-//    ADMIN - UPDATE ORDER STATUS
-// ====================================================== */
-// exports.updateOrderStatus = async (req, res) => {
-//   try {
-//     const { status } = req.body;
-
-//     const allowedStatus = [
-//       "placed",
-//       "confirmed",
-//       "shipped",
-//       "delivered",
-//       "cancelled",
-//     ];
-
-//     if (!allowedStatus.includes(status)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid order status",
-//       });
-//     }
-
-//     const order = await Order.findByIdAndUpdate(
-//       req.params.id,
-//       { status },
-//       { new: true }
-//     );
-
-//     if (!order) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Order not found",
-//       });
-//     }
-
-//     return res.json({
-//       success: true,
-//       message: "Order status updated",
-//       data: order,
-//     });
-//   } catch (err) {
-//     console.error("Update Order Status Error:", err);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to update order status",
-//     });
-//   }
-// };
-
 
 const Order = require("../models/Order");
 const Price = require("../models/priceModel");
+const VendorProduct = require("../models/vendorProduct");
 const User = require("../models/User");
+const Rider = require("../models/Rider");
+const Inventory = require("../models/Inventory");
+const Ledger = require("../models/Inventoryledger");
 
-/* ======================================================
-   CREATE ORDER
-====================================================== */
+const deductStock = async (items, orderId, note = "Order placed") => {
+  for (const item of items) {
+    const inv = await Inventory.findOne({ product: item.product });
+    if (!inv) continue;
+    inv.stock = Math.max(0, inv.stock - item.quantity);
+    await inv.save();
+    await Ledger.create({
+      product: item.product,
+      type: "OUTWARD",
+      qty: item.quantity,
+      note: `${note} — Order #${String(orderId).slice(-6).toUpperCase()}`
+    });
+  }
+};
+
+const restoreStock = async (items, orderId, note = "Order cancelled") => {
+  for (const item of items) {
+    const inv = await Inventory.findOne({ product: item.product });
+    if (!inv) continue;
+    inv.stock = inv.stock + item.quantity;
+    await inv.save();
+    await Ledger.create({
+      product: item.product,
+      type: "INWARD",
+      qty: item.quantity,
+      note: `${note} — Order #${String(orderId).slice(-6).toUpperCase()}`
+    });
+  }
+};
+
+const resolveItems = async (rawItems) => {
+  if (!Array.isArray(rawItems) || rawItems.length === 0)
+    throw { status: 400, message: "Items array required aur empty nahi hona chahiye" };
+
+  const resolved = await Promise.all(
+    rawItems.map(async (it, idx) => {
+      if (!it.productId)
+        throw { status: 400, message: `Item ${idx + 1}: productId missing hai` };
+
+      const qty = Number(it.quantity);
+      if (!Number.isInteger(qty) || qty < 1)
+        throw { status: 400, message: `Item ${idx + 1}: quantity valid nahi hai (min 1)` };
+
+      let product;
+      let ownerType;
+      let vendorId = null;
+      let productModel;
+
+      if (it.type === "admin") {
+        product = await Price.findById(it.productId);
+        ownerType = "admin";
+        productModel = "Price";
+      } else if (it.type === "vendor") {
+        product = await VendorProduct.findById(it.productId);
+        ownerType = "vendor";
+        productModel = "VendorProduct";
+        vendorId = product?.vendor;
+      } else {
+        throw { status: 400, message: `Item ${idx + 1}: type invalid hai` };
+      }
+
+      if (!product)
+        throw { status: 404, message: `Product nahi mila: ${it.productId}` };
+
+      if (product.status !== "active")
+        throw { status: 400, message: `Product active nahi hai: ${product.name}` };
+
+      const unitPrice = product.salePrice || product.price;
+
+      return {
+        product: product._id,
+        name: product.name,
+        image: product.image || "",
+        unitPrice,
+        quantity: qty,
+        price: +(unitPrice * qty).toFixed(2),
+        ownerType,
+        vendorId,
+        productModel
+      };
+    })
+  );
+
+  const totalPrice = +resolved.reduce((sum, i) => sum + i.price, 0).toFixed(2);
+  return { resolved, totalPrice };
+};
+
 exports.createOrder = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { productId, quantity = 1, address } = req.body;
+    const { items, address } = req.body;
+    const user = await User.findById(req.user.id);
 
-    /* 🔎 USER CHECK */
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
 
-    /* 🔎 PRODUCT CHECK */
-    const product = await Price.findById(productId);
-    if (!product || product.status !== "active") {
-      return res.status(404).json({
-        success: false,
-        message: "Product not available",
-      });
-    }
+    const { resolved, totalPrice } = await resolveItems(items);
 
-    /* 🔢 QUANTITY VALIDATION */
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      return res.status(400).json({
-        success: false,
-        message: "Quantity must be a number greater than 0",
-      });
-    }
-
-    /* 💰 PRICE CALCULATION */
-    const unitPrice = product.salePrice;     // product ka order-time price
-    const totalPrice = unitPrice * quantity; // FINAL TOTAL
-
-    /* 📦 CREATE ORDER */
     const order = await Order.create({
       user: user._id,
       userName: user.name || user.email,
-      product: product._id,
-      productName: product.name,
-      unitPrice: unitPrice,   // ✅ REQUIRED BY SCHEMA
-      quantity,
-      price: totalPrice,      // ✅ FINAL TOTAL
+      items: resolved,
+      totalPrice,
       address,
+      paidAmount: 0,
+      paymentStatus: "unpaid"
     });
+
+    await deductStock(resolved, order._id);
 
     return res.status(201).json({
       success: true,
       message: "Order placed successfully",
-      data: {
-        orderId: order._id,
-        productName: order.productName,
-        unitPrice: order.unitPrice,
-        quantity: order.quantity,
-        price: order.price,
-        status: order.status,
-        createdAt: order.createdAt,
-      },
+      data: order
     });
+
   } catch (err) {
-    console.error("Create Order Error:", err);
+    if (err.status)
+      return res.status(err.status).json({ success: false, message: err.message });
+
     return res.status(500).json({
       success: false,
-      message: "Failed to place order",
+      message: "Order place karna fail ho gaya"
     });
   }
 };
 
-/* ======================================================
-   USER - MY ORDERS
-====================================================== */
-exports.getMyOrders = async (req, res) => {
-  try {
-    const orders = await Order.find({ user: req.user.id })
-      .populate("product", "name image")
-      .sort({ createdAt: -1 });
-
-    return res.json({
-      success: true,
-      count: orders.length,
-      data: orders,
-    });
-  } catch (err) {
-    console.error("Get My Orders Error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch orders",
-    });
-  }
-};
-
-/* ======================================================
-   ADMIN - ALL ORDERS
-====================================================== */
-exports.getAllOrders = async (req, res) => {
-  try {
-    const orders = await Order.find()
-      .populate("user", "name email")
-      .populate("product", "name image")
-      .sort({ createdAt: -1 });
-
-    return res.json({
-      success: true,
-      count: orders.length,
-      data: orders,
-    });
-  } catch (err) {
-    console.error("Get All Orders Error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch orders",
-    });
-  }
-};
-
-/* ======================================================
-   ADMIN - UPDATE ORDER STATUS
-====================================================== */
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
 
-    const allowedStatus = [
-      "placed",
-      "confirmed",
-      "shipped",
-      "delivered",
-      "cancelled",
-    ];
+    const allowed = ["placed", "confirmed", "shipped", "delivered", "cancelled"];
+    if (!allowed.includes(status))
+      return res.status(400).json({ success: false, message: "Invalid status value" });
 
-    if (!allowedStatus.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order status",
-      });
+    const order = await Order.findById(req.params.id);
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found" });
+
+    const prevStatus = order.status;
+
+    if (status === "cancelled" && prevStatus !== "cancelled")
+      await restoreStock(order.items, order._id);
+
+    if (prevStatus === "cancelled" && status !== "cancelled")
+      await deductStock(order.items, order._id);
+
+    order.status = status;
+    await order.save();
+
+    return res.json({ success: true, data: order });
+
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Status update fail ho gaya" });
+  }
+};
+
+exports.getMyOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ user: req.user.id }).sort({ createdAt: -1 });
+    return res.json({ success: true, data: orders });
+  } catch {
+    return res.status(500).json({ success: false, message: "Fetch fail" });
+  }
+};
+
+exports.getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+    return res.json({ success: true, data: orders });
+  } catch {
+    return res.status(500).json({ success: false, message: "Fetch fail" });
+  }
+};
+
+exports.assignRider = async (req, res) => {
+  try {
+    const { riderId } = req.body;
+
+    if (riderId) {
+      const rider = await Rider.findById(riderId);
+      if (!rider)
+        return res.status(404).json({ success: false, message: "Rider not found" });
     }
 
     const order = await Order.findByIdAndUpdate(
       req.params.id,
-      { status },
+      { assignedRider: riderId || null },
       { new: true }
     );
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+    return res.json({ success: true, data: order });
+
+  } catch {
+    return res.status(500).json({ success: false, message: "Assign fail" });
+  }
+};
+
+exports.updateOrderItems = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found" });
+
+    const oldItems = order.items;
+    const { resolved, totalPrice } = await resolveItems(req.body.items);
+
+    if (order.status !== "cancelled") {
+      await restoreStock(oldItems, order._id);
+      await deductStock(resolved, order._id);
     }
+
+    order.items = resolved;
+    order.totalPrice = totalPrice;
+
+    if (order.paidAmount > totalPrice)
+      order.paidAmount = totalPrice;
+
+    await order.save();
 
     return res.json({
       success: true,
-      message: "Order status updated",
-      data: order,
+      message: "Order updated",
+      data: order
     });
+
   } catch (err) {
-    console.error("Update Order Status Error:", err);
+    if (err.status)
+      return res.status(err.status).json({ success: false, message: err.message });
+
     return res.status(500).json({
       success: false,
-      message: "Failed to update order status",
+      message: "Order update fail"
+    });
+  }
+};
+
+exports.updatePayment = async (req, res) => {
+  try {
+    const { paidAmount, paymentNote } = req.body;
+
+    if (paidAmount === undefined)
+      return res.status(400).json({ success: false, message: "paidAmount required" });
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found" });
+
+    order.paidAmount = Math.min(Number(paidAmount), order.totalPrice);
+
+    if (paymentNote !== undefined)
+      order.paymentNote = paymentNote;
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      data: order
+    });
+
+  } catch {
+    return res.status(500).json({
+      success: false,
+      message: "Payment update fail"
     });
   }
 };

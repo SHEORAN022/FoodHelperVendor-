@@ -93,6 +93,9 @@ app.use("/api/admin", require("./routes/adminCategoryRoutes"));
 app.use("/api/vendor/orders", require("./routes/vendorOrder.routes"));
 app.use("/api/vendor/profile", require("./routes/vendorProfile.routes"));
 app.use("/api/vendor/inventory", require("./routes/vendorInventory.routes"));
+const brandRoutes = require("./routes/brandRoutes");
+
+app.use("/api/brands", brandRoutes);
 app.use(
   "/api/vendor/bulk-discounts",
   require("./routes/vendorBulkDiscountRoutes"),
