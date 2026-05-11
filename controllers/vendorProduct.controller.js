@@ -1136,9 +1136,7 @@ const csv            = require("fast-csv");
 const HsnCode =
   mongoose.models.HsnCode || require("../models/Hsncode");
 
-/* ══════════════════════════════════════════════════════════════
-   CLOUDINARY HELPERS
-══════════════════════════════════════════════════════════════ */
+
 const uploadToFolder = (buffer, folder) =>
   new Promise((resolve, reject) => {
     cloudinary.uploader
@@ -1159,11 +1157,6 @@ async function uploadManyGallery(files = [], limit = 4) {
   );
 }
 
-/* ══════════════════════════════════════════════════════════════
-   GST + CESS CALCULATOR
-   salePrice = basePrice + profit
-   GST & CESS are INSIDE salePrice (inclusive)
-══════════════════════════════════════════════════════════════ */
 function calcGstBreakdown(base, profit, gstPercent, cessPercent, taxType) {
   const basePrice   = Number(base)   || 0;
   const profitPrice = Number(profit) || 0;
@@ -1264,17 +1257,13 @@ function parsePackaging(raw) {
   };
 }
 
-/* ══════════════════════════════════════════════════════════════
-   HSN MAP HELPER
-══════════════════════════════════════════════════════════════ */
+
 async function getHsnMap() {
   const all = await HsnCode.find({ active: true }).lean();
   return all.reduce((acc, h) => { acc[h.code.trim()] = h; return acc; }, {});
 }
 
-/* ══════════════════════════════════════════════════════════════
-   buildProduct — shape returned to frontend
-══════════════════════════════════════════════════════════════ */
+
 function buildProduct(p, hsnMap = {}) {
   const hsnInfo = p.hsnCode ? hsnMap[p.hsnCode.trim()] || null : null;
   return {
@@ -1287,6 +1276,7 @@ function buildProduct(p, hsnMap = {}) {
     subSubCategory:    p.subSubCategory,
     weight:            p.weight || null,
     unitConversions:   p.unitConversions  || [],
+    unitDefs: (p.unitConversions || []).map((u) => ({ label: u.unit, multiplier: u.nPcs, })),
     packaging:         p.packaging || { box: 0, packetPerBox: 0, piecePerPacket: 0 },
     description:       p.description     || "",
     image:             p.image           || "",

@@ -94,6 +94,8 @@ app.use("/api/vendor/orders", require("./routes/vendorOrder.routes"));
 app.use("/api/vendor/profile", require("./routes/vendorProfile.routes"));
 app.use("/api/vendor/inventory", require("./routes/vendorInventory.routes"));
 const brandRoutes = require("./routes/brandRoutes");
+app.use("/api/coupons", require("./routes/couponRoutes"));
+app.use("/api/public/products", require("./routes/Publicproducts.routes"));
 
 app.use("/api/brands", brandRoutes);
 app.use(

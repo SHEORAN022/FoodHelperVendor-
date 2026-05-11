@@ -4,7 +4,7 @@ const DiscountRule = require("../models/DiscountRule");
 const { calculateBill } = require("../utils/billingEngine");
 
 exports.checkout = async (req, res) => {
-  const cart = req.body.cart; // [{ productId, qty }]
+  const cart = req.body.cart; 
 
   let total = 0;
   const items = [];

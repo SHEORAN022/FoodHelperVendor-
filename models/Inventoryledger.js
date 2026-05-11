@@ -15,4 +15,8 @@ const ledgerSchema = new mongoose.Schema(
   { timestamps: false }
 );
 
-module.exports = mongoose.model("InventoryLedger", ledgerSchema);
+
+module.exports =
+  mongoose.models.InventoryLedger ||
+  mongoose.model("InventoryLedger", ledgerSchema);
+
