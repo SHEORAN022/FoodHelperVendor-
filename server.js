@@ -48,12 +48,10 @@ app.use(
   }),
 );
 
-// Handle Preflight (VERY IMPORTANT)
+
 app.options("*", cors());
 
-/* ================================
-   UPLOADS FOLDER
-================================ */
+
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
