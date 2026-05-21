@@ -1,5 +1,5 @@
 const Inventory       = require("../models/Inventory");
-const InventoryLedger = require("../models/Inventoryledger");
+const InventoryLedger = require("../models/inventoryledger");
 
 const toNum = (v, fallback = 0) => {
   const n = Number(v);
