@@ -28,6 +28,7 @@ const allowedOrigins = [
   "http://localhost:3000",
     "http://localhost:3001",
   "https://food-helper-seller.vercel.app",
+   "https://seller-foodhelperfrontend.vercel.app",
   "*",
 ];
 
