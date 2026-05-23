@@ -29,6 +29,8 @@ const allowedOrigins = [
     "http://localhost:3001",
   "https://food-helper-seller.vercel.app",
    "https://seller-foodhelperfrontend.vercel.app",
+     "https://seller.foodhelper.in",
+  "https://master.foodhelper.in",
   "*",
 ];
 
